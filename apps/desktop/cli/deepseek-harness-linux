@@ -1,0 +1,17 @@
+#!/bin/sh
+# Launch the GUI without arguments and dispatch command-line requests to dsh.
+set -e
+launcher=$0
+while [ -L "$launcher" ]; do
+  directory=$(CDPATH= cd -- "$(dirname -- "$launcher")" && pwd -P)
+  target=$(readlink "$launcher")
+  case "$target" in
+    /*) launcher=$target ;;
+    *) launcher=$directory/$target ;;
+  esac
+done
+application=$(CDPATH= cd -- "$(dirname -- "$launcher")/.." && pwd -P)
+if [ "$#" -eq 0 ]; then
+  exec "$application/deepseek-harness"
+fi
+exec "$application/resources/runtime/cli/bin/dsh" "$@"

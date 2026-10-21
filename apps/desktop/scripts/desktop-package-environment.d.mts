@@ -8,6 +8,13 @@
 export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 
 /**
+ * Select unsigned Linux build defaults without inheriting release credentials or update settings.
+ * @param environment Parent environment, retained for build tools and networking.
+ * @returns Unsigned Linux build environment with the standard application identifier.
+ */
+export function localLinuxPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
+
+/**
  * Read a machine preset when selected, otherwise the target's required dotenv; no ambient release fallback.
  * PACKAGE_TEST_RELEASE_ID overrides the test preset only; blank retains its configured ID.
  * @param platform Target platform.
@@ -17,7 +24,7 @@ export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): N
  * @returns Isolated environment with file-owned release settings.
  */
 export function loadDesktopPackageEnvironment(
-  platform: 'win32' | 'darwin',
+  platform: 'win32' | 'darwin' | 'linux',
   environment?: NodeJS.ProcessEnv,
   appRoot?: string,
   options?: { unsigned?: boolean, prepareOnly?: boolean },
@@ -32,6 +39,6 @@ export function loadDesktopPackageEnvironment(
  */
 export function validateDesktopPackageEnvironment(
   environment: NodeJS.ProcessEnv,
-  target: { platform: 'win32' | 'darwin', arch: string },
+  target: { platform: 'win32' | 'darwin' | 'linux', arch: string },
   options?: { unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean },
 ): void

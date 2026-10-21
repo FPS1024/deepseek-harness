@@ -93,7 +93,13 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux is not a supported Desktop release target.
+The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux x64 builds stay local and are not part of Desktop release publication or automatic updates.
+
+### Linux x64 local build
+
+On a Linux x64 host with dependencies installed, run `pnpm run package:desktop:linux:x64`. The command builds an AppImage and Debian package under `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/` and smoke-checks the unpacked application. The Debian package installs the application under `/opt/deepseek-harness`, registers `/usr/bin/deepseek-harness` and a `DeepSeek-Harness` desktop entry, and leaves `$DSH_HOME` in the user home. Running `deepseek-harness` without arguments opens Desktop; arguments such as `--help` and `--version` go to the installed `dsh` CLI, with all arguments preserved. The entry uses the Desktop Host owned by the Electron process; the package does not install a system service. Artifacts use `deepseek-harness-linux-v<version>.x86_64.<AppImage|deb>`. Use `pnpm run package:desktop:linux:x64:dir` to produce only the unpacked application. Linux builds use local defaults and do not read release credentials or publish an update feed.
+
+The [upstream Linux release workflow](../../../.github/workflows/upstream-linux-release.yml) checks daily for a newer stable `dsh-vX.Y.Z` tag from the official repository. Manual runs take the current checkout version as a fallback, including prereleases such as `0.2.1-rc.2`: a newer upstream stable tag is merged and built; otherwise, the checked-out version is built without changing the source branch. The workflow pushes the version tag and publishes `v<version>` with the DEB and AppImage attached and an empty release body. Existing tags, version conflicts, or packaging failures stop publication.
 
 Both release and local unsigned macOS DMGs use LZMA compression (`dmg.format: 'ULMO'`) in [the electron-builder configuration](../scripts/electron-builder-config.mjs). A [build-time patch](../../../patches/app-builder-lib@26.17.0.patch) adds this format to the pinned builder's validation and TypeScript declarations.
 

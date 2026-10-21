@@ -1,0 +1,172 @@
+name: Upstream Linux Desktop Release
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      fallback_version:
+        description: Local fallback version to build when upstream has no newer stable release, for example 0.2.1-rc.2
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-linux-desktop-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5.0.0
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Select an upstream update or the requested fallback build
+        id: upstream
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_VERSION: ${{ inputs.fallback_version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            echo "Run this workflow from the default branch ($DEFAULT_BRANCH)." >&2
+            exit 1
+          fi
+          git remote add upstream https://github.com/deepseek-ai/deepseek-harness.git
+          current_version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
+          if [[ ! "$current_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Current package version is not supported: $current_version" >&2
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            fallback_version="$REQUESTED_VERSION"
+            fallback_version="${fallback_version#dsh-v}"
+            fallback_version="${fallback_version#v}"
+            if [[ ! "$fallback_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo 'Enter a semver such as 0.2.1-rc.2.' >&2
+              exit 1
+            fi
+            if [[ "$fallback_version" != "$current_version" ]]; then
+              echo "Fallback version $fallback_version must match this checkout's version $current_version." >&2
+              exit 1
+            fi
+          else
+            fallback_version=''
+          fi
+          latest_version="$(git ls-remote --tags upstream 'refs/tags/dsh-v[0-9]*' \
+              | awk '{ tag=$2; sub("refs/tags/dsh-v", "", tag); if (tag ~ /^[0-9]+\.[0-9]+\.[0-9]+$/) print tag }' \
+              | sort -V | tail -n 1)"
+          current_debian_version="${current_version/-/~}"
+          if [[ -n "$latest_version" ]] && dpkg --compare-versions "$latest_version" gt "$current_debian_version"; then
+            version="$latest_version"
+            upstream_tag="dsh-v$version"
+            git fetch --no-tags upstream "refs/tags/$upstream_tag:refs/tags/$upstream_tag"
+            source_version="$(git show "$upstream_tag:package.json" | node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).version')"
+            if [[ "$source_version" != "$version" ]]; then
+              echo "Upstream tag $upstream_tag declares version $source_version." >&2
+              exit 1
+            fi
+            merge=true
+          elif [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            version="$fallback_version"
+            upstream_tag=''
+            merge=false
+            echo "No newer upstream stable release; building the requested fallback version $version."
+          else
+            echo "No newer upstream stable release (current $current_version; latest stable ${latest_version:-none})."
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git ls-remote --exit-code origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "Release tag v$version already exists on this fork; refusing to overwrite it." >&2
+            exit 1
+          fi
+          echo 'build=true' >> "$GITHUB_OUTPUT"
+          echo "merge=$merge" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Merge the upstream release tag
+        if: steps.upstream.outputs.merge == 'true'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_SHA: ${{ steps.upstream.outputs.base_sha }}
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
+          VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          set -euo pipefail
+          remote_sha="$(git ls-remote origin "refs/heads/$DEFAULT_BRANCH" | awk '{ print $1 }')"
+          if [[ "$remote_sha" != "$BASE_SHA" ]]; then
+            echo "Fork branch $DEFAULT_BRANCH moved during this run; refusing to merge onto a stale base." >&2
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit --no-ff "refs/tags/$UPSTREAM_TAG"
+          ROOT_VERSION="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
+          DESKTOP_VERSION="$(node -p 'JSON.parse(require("node:fs").readFileSync("apps/desktop/package.json", "utf8")).version')"
+          if [[ "$ROOT_VERSION" != "$VERSION" || "$DESKTOP_VERSION" != "$VERSION" ]]; then
+            echo "Merged source versions do not match $VERSION (root=$ROOT_VERSION, desktop=$DESKTOP_VERSION)." >&2
+            exit 1
+          fi
+          echo "merge_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        id: merge
+
+      - name: Install locked dependencies
+        if: steps.upstream.outputs.build == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Linux desktop packages
+        if: steps.upstream.outputs.build == 'true'
+        run: pnpm run package:desktop:linux:x64
+
+      - name: Verify release artifacts
+        if: steps.upstream.outputs.build == 'true'
+        env:
+          VERSION: ${{ steps.upstream.outputs.version }}
+        run: |
+          set -euo pipefail
+          output="apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts"
+          test -s "$output/deepseek-harness-linux-v$VERSION.x86_64.deb"
+          test -s "$output/deepseek-harness-linux-v$VERSION.x86_64.AppImage"
+
+      - name: Push the synced branch and version tag, then publish the release
+        if: steps.upstream.outputs.build == 'true'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          VERSION: ${{ steps.upstream.outputs.version }}
+          MERGE: ${{ steps.upstream.outputs.merge }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          if [[ "$MERGE" == true ]]; then
+            git push origin "$MERGE_SHA:refs/heads/$DEFAULT_BRANCH"
+          fi
+          git tag -a "v$VERSION" "$MERGE_SHA" -m "v$VERSION"
+          git push origin "refs/tags/v$VERSION"
+          output="apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts"
+          release_args=("v$VERSION" \
+            "$output/deepseek-harness-linux-v$VERSION.x86_64.deb" \
+            "$output/deepseek-harness-linux-v$VERSION.x86_64.AppImage" \
+            --verify-tag --title "v$VERSION" --notes-file /dev/null)
+          if [[ "$VERSION" == *-* ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "${release_args[@]}"

@@ -65,7 +65,7 @@ export function createElectronBuilderConfig(
   if (skipNotarization && (unsigned || resolvedPlatform !== 'darwin')) throw new Error('Skipping notarization requires a signed macOS build')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)
+  const policy = unsigned && resolvedPlatform !== 'win32' ? undefined : resolveDesktopPolicyEnvironment(env)
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
@@ -109,11 +109,14 @@ export function createElectronBuilderConfig(
     extraMetadata: {
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
+      ...(resolvedPlatform === 'linux' ? { desktopName: 'DeepSeek-Harness' } : {}),
+      ...(resolvedPlatform === 'linux' ? { homepage: 'https://github.com/deepseek-ai/deepseek-harness' } : {}),
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
-    productName: 'DeepSeek Harness',
+    // Linux packages install under /opt/<productName>; keep this stable and path-safe.
+    productName: resolvedPlatform === 'linux' ? 'deepseek-harness' : 'DeepSeek Harness',
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
     artifactName: `deepseek-harness-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
@@ -150,6 +153,9 @@ export function createElectronBuilderConfig(
       { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
     ],
     asarUnpack: unpack,
+    extraFiles: resolvedPlatform === 'linux'
+      ? [{ from: fileURLToPath(new URL('../cli/deepseek-harness-linux', import.meta.url)), to: 'bin/deepseek-harness' }]
+      : [],
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
@@ -247,7 +253,19 @@ export function createElectronBuilderConfig(
     },
     linux: {
       category: 'Development',
-      target: ['AppImage'],
+      executableName: 'deepseek-harness',
+      artifactName: 'deepseek-harness-linux-v${version}.x86_64.${ext}',
+      icon: fileURLToPath(new URL('../resources/icon.svg', import.meta.url)),
+      syncDesktopName: true,
+      desktop: { entry: { Name: 'DeepSeek-Harness', Icon: 'deepseek-harness' } },
+      target: ['AppImage', 'deb'],
+    },
+    deb: {
+      packageName: 'deepseek-harness',
+      maintainer: 'DeepSeek AI',
+      packageCategory: 'devel',
+      afterInstall: fileURLToPath(new URL('./linux-deb-post-install.sh', import.meta.url)),
+      afterRemove: fileURLToPath(new URL('./linux-deb-post-remove.sh', import.meta.url)),
     },
     nsis: {
       installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),

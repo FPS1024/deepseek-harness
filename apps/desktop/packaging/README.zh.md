@@ -93,7 +93,13 @@ pnpm run package:desktop:mac:x64
 pnpm run package:desktop:win:x64
 ```
 
-macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux 不是受支持的 Desktop 发布目标。
+macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux x64 产物仅供本地构建，不参与 Desktop 发布或自动更新。
+
+### Linux x64 本地构建
+
+在安装好依赖的 Linux x64 主机上运行 `pnpm run package:desktop:linux:x64`。命令会在 `apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/` 下构建 AppImage 和 Debian 包，并对解包后的应用执行 smoke 检查。Debian 包将应用安装到 `/opt/deepseek-harness`，注册 `/usr/bin/deepseek-harness` 命令和名为 `DeepSeek-Harness` 的桌面入口，`$DSH_HOME` 仍位于用户主目录。无参数运行 `deepseek-harness` 会打开桌面应用；传入 `--help`、`--version` 等参数时会交给已安装的 `dsh` CLI，所有参数都会保留。桌面入口使用 Electron 进程管理的 Desktop Host；安装包不创建系统服务。产物命名为 `deepseek-harness-linux-v<version>.x86_64.<AppImage|deb>`。使用 `pnpm run package:desktop:linux:x64:dir` 只生成解包后的应用。Linux 构建使用本地默认值，不读取发布凭据，也不发布更新源。
+
+[上游 Linux 发布工作流](../../../.github/workflows/upstream-linux-release.yml)每天检查官方仓库是否发布了更新的稳定版 `dsh-vX.Y.Z` 标签。手动运行时输入当前 checkout 的版本作为回退版本，也支持 `0.2.1-rc.2` 这样的预发布版本：如果上游有更新的稳定版，就合并并构建该版本；否则按当前 checkout 版本构建，不改动源码分支。工作流会推送版本标签，并创建 `v<版本>` Release，附上 DEB 与 AppImage，Release 正文留空。标签已存在、版本冲突或打包失败时不会发布。
 
 macOS 正式发布和本地未签名 DMG 都通过 [electron-builder 配置](../scripts/electron-builder-config.mjs)中的 `dmg.format: 'ULMO'` 使用 LZMA 压缩。[构建时补丁](../../../patches/app-builder-lib@26.17.0.patch)为固定版本 builder 的校验规则和 TypeScript 声明添加此格式。
 
