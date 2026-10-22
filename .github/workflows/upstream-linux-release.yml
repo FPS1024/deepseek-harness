@@ -9,6 +9,11 @@ on:
         description: Local fallback version to build when upstream has no newer stable release, for example 0.2.1-rc.2
         type: string
         required: true
+      rebuild_existing:
+        description: Rebuild an existing prerelease at this version and replace its assets
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -39,7 +44,9 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           REQUESTED_VERSION: ${{ inputs.fallback_version }}
+          REBUILD_EXISTING: ${{ inputs.rebuild_existing }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]]; then
@@ -92,20 +99,42 @@ jobs:
             exit 0
           fi
           reuse_tag=false
+          replace_existing=false
+          release_exists=false
+          old_tag_oid=''
           if git ls-remote --exit-code origin "refs/tags/v$version" >/dev/null 2>&1; then
-            git fetch --no-tags origin "refs/tags/v$version:refs/tags/recovery-v$version"
-            existing_tag_commit="$(git rev-parse "refs/tags/recovery-v$version^{commit}")"
-            if ! git merge-base --is-ancestor "$existing_tag_commit" "$GITHUB_SHA" \
-              || ! git diff --quiet "$existing_tag_commit" "$GITHUB_SHA" -- . ':!.github/workflows/upstream-linux-release.yml'; then
-              echo "Release tag v$version already exists and does not match this source; refusing to reuse it." >&2
-              exit 1
+            if [[ "$EVENT_NAME" == workflow_dispatch && "$REBUILD_EXISTING" == true ]]; then
+              if [[ "$version" != *-* ]]; then
+                echo 'Rebuilding an existing release is limited to prerelease versions.' >&2
+                exit 1
+              fi
+              old_tag_oid="$(git ls-remote origin "refs/tags/v$version" | awk 'NR == 1 { print $1 }')"
+              if [[ -z "$old_tag_oid" ]]; then
+                echo "Could not resolve the existing release tag v$version." >&2
+                exit 1
+              fi
+              replace_existing=true
+              if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                release_exists=true
+              fi
+            else
+              git fetch --no-tags origin "refs/tags/v$version:refs/tags/recovery-v$version"
+              existing_tag_commit="$(git rev-parse "refs/tags/recovery-v$version^{commit}")"
+              if ! git merge-base --is-ancestor "$existing_tag_commit" "$GITHUB_SHA" \
+                || ! git diff --quiet "$existing_tag_commit" "$GITHUB_SHA" -- . ':!.github/workflows/upstream-linux-release.yml'; then
+                echo "Release tag v$version already exists and does not match this source; refusing to reuse it." >&2
+                exit 1
+              fi
+              reuse_tag=true
+              echo "Reusing existing v$version tag for the same release source."
             fi
-            reuse_tag=true
-            echo "Reusing existing v$version tag for the same release source."
           fi
           echo 'build=true' >> "$GITHUB_OUTPUT"
           echo "merge=$merge" >> "$GITHUB_OUTPUT"
           echo "reuse_tag=$reuse_tag" >> "$GITHUB_OUTPUT"
+          echo "replace_existing=$replace_existing" >> "$GITHUB_OUTPUT"
+          echo "release_exists=$release_exists" >> "$GITHUB_OUTPUT"
+          echo "old_tag_oid=$old_tag_oid" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
           echo "base_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
@@ -161,6 +190,9 @@ jobs:
           VERSION: ${{ steps.upstream.outputs.version }}
           MERGE: ${{ steps.upstream.outputs.merge }}
           REUSE_TAG: ${{ steps.upstream.outputs.reuse_tag }}
+          REPLACE_EXISTING: ${{ steps.upstream.outputs.replace_existing }}
+          RELEASE_EXISTS: ${{ steps.upstream.outputs.release_exists }}
+          OLD_TAG_OID: ${{ steps.upstream.outputs.old_tag_oid }}
           MERGE_SHA: ${{ steps.merge.outputs.merge_sha || github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -171,7 +203,10 @@ jobs:
           if [[ "$MERGE" == true ]]; then
             git push origin "$MERGE_SHA:refs/heads/$DEFAULT_BRANCH"
           fi
-          if [[ "$REUSE_TAG" != true ]]; then
+          if [[ "$REPLACE_EXISTING" == true ]]; then
+            git tag -fa "v$VERSION" "$MERGE_SHA" -m "v$VERSION"
+            git push --force-with-lease="refs/tags/v$VERSION:$OLD_TAG_OID" origin "refs/tags/v$VERSION"
+          elif [[ "$REUSE_TAG" != true ]]; then
             git tag -a "v$VERSION" "$MERGE_SHA" -m "v$VERSION"
             git push origin "refs/tags/v$VERSION"
           fi
@@ -183,4 +218,12 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then
             release_args+=(--prerelease)
           fi
-          gh release create "${release_args[@]}" --repo "$GITHUB_REPOSITORY"
+          if [[ "$REPLACE_EXISTING" == true && "$RELEASE_EXISTS" == true ]]; then
+            gh release upload "v$VERSION" \
+              "$output/deepseek-harness-linux-v$VERSION.x86_64.deb" \
+              "$output/deepseek-harness-linux-v$VERSION.x86_64.AppImage" \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "v$VERSION" --title "v$VERSION" --notes-file /dev/null --prerelease --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "${release_args[@]}" --repo "$GITHUB_REPOSITORY"
+          fi
