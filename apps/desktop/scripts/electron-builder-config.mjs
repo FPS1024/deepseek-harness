@@ -255,7 +255,7 @@ export function createElectronBuilderConfig(
       category: 'Development',
       executableName: 'deepseek-harness',
       artifactName: 'deepseek-harness-linux-v${version}.x86_64.${ext}',
-      icon: fileURLToPath(new URL('../resources/icon.png', import.meta.url)),
+      icon: fileURLToPath(new URL('../resources/icon.svg', import.meta.url)),
       syncDesktopName: true,
       desktop: { entry: { Name: 'DeepSeek-Harness', Icon: 'deepseek-harness' } },
       target: ['AppImage', 'deb'],
