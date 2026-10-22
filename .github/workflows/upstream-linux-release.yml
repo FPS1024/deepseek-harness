@@ -91,12 +91,21 @@ jobs:
             echo 'build=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          reuse_tag=false
           if git ls-remote --exit-code origin "refs/tags/v$version" >/dev/null 2>&1; then
-            echo "Release tag v$version already exists on this fork; refusing to overwrite it." >&2
-            exit 1
+            git fetch --no-tags origin "refs/tags/v$version:refs/tags/recovery-v$version"
+            existing_tag_commit="$(git rev-parse "refs/tags/recovery-v$version^{commit}")"
+            if ! git merge-base --is-ancestor "$existing_tag_commit" "$GITHUB_SHA" \
+              || ! git diff --quiet "$existing_tag_commit" "$GITHUB_SHA" -- . ':!.github/workflows/upstream-linux-release.yml'; then
+              echo "Release tag v$version already exists and does not match this source; refusing to reuse it." >&2
+              exit 1
+            fi
+            reuse_tag=true
+            echo "Reusing existing v$version tag for the same release source."
           fi
           echo 'build=true' >> "$GITHUB_OUTPUT"
           echo "merge=$merge" >> "$GITHUB_OUTPUT"
+          echo "reuse_tag=$reuse_tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "upstream_tag=$upstream_tag" >> "$GITHUB_OUTPUT"
           echo "base_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
@@ -151,6 +160,7 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           VERSION: ${{ steps.upstream.outputs.version }}
           MERGE: ${{ steps.upstream.outputs.merge }}
+          REUSE_TAG: ${{ steps.upstream.outputs.reuse_tag }}
           MERGE_SHA: ${{ steps.merge.outputs.merge_sha || github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -161,8 +171,10 @@ jobs:
           if [[ "$MERGE" == true ]]; then
             git push origin "$MERGE_SHA:refs/heads/$DEFAULT_BRANCH"
           fi
-          git tag -a "v$VERSION" "$MERGE_SHA" -m "v$VERSION"
-          git push origin "refs/tags/v$VERSION"
+          if [[ "$REUSE_TAG" != true ]]; then
+            git tag -a "v$VERSION" "$MERGE_SHA" -m "v$VERSION"
+            git push origin "refs/tags/v$VERSION"
+          fi
           output="apps/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts"
           release_args=("v$VERSION" \
             "$output/deepseek-harness-linux-v$VERSION.x86_64.deb" \
