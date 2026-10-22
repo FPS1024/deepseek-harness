@@ -156,6 +156,8 @@ jobs:
         run: |
           set -euo pipefail
           gh auth setup-git
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           if [[ "$MERGE" == true ]]; then
             git push origin "$MERGE_SHA:refs/heads/$DEFAULT_BRANCH"
           fi
