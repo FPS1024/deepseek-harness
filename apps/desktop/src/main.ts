@@ -951,31 +951,37 @@ async function main(): Promise<void> {
       { role: 'hideOthers', label: currentDesktopLocale().messages.hideOtherApplications },
       { role: 'unhide', label: currentDesktopLocale().messages.showAllApplications }, { type: 'separator' }]
     : []
-  const applicationItems = (): MenuItemConstructorOptions[] => [
-    // Windows has no system About panel; Electron's fallback is a plain
-    // message box, so the shell shows its own dimmed dialog instead.
-    process.platform === 'win32'
-      ? { label: currentDesktopLocale().messages.aboutMenu,
-        click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
-      : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
-    { type: 'separator' },
-    { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
-    ...process.platform === 'darwin' || process.platform === 'win32'
-      ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }] : [],
-    ...development ? [
-      { type: 'separator' as const },
-      { label: currentDesktopLocale().messages.reloadPageMenu, role: 'reload' as const },
-      { label: currentDesktopLocale().messages.restartAppHostMenu, click: () => {
-        if (quitting) return
-        app.relaunch()
-        quitWithoutConfirmation()
-      } },
-    ] : [],
-    { type: 'separator' },
-    ...hideCommands,
-    { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
-      : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
-  ]
+  const applicationItems = (): MenuItemConstructorOptions[] => {
+    // Linux packages ship without an update feed, so the check entry would only report its absence.
+    const releaseActions: MenuItemConstructorOptions[] = process.platform === 'darwin' || process.platform === 'win32'
+      ? [
+        { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
+        { label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } },
+      ]
+      : []
+    return [
+      // Windows has no system About panel; Electron's fallback is a plain
+      // message box, so the shell shows its own dimmed dialog instead.
+      process.platform === 'win32'
+        ? { label: currentDesktopLocale().messages.aboutMenu,
+          click: () => { void showAbout().catch((error: unknown) => { console.error(error) }) } }
+        : { label: currentDesktopLocale().messages.aboutMenu, role: 'about' },
+      ...releaseActions.length === 0 ? [] : [{ type: 'separator' as const }, ...releaseActions],
+      ...development ? [
+        { type: 'separator' as const },
+        { label: currentDesktopLocale().messages.reloadPageMenu, role: 'reload' as const },
+        { label: currentDesktopLocale().messages.restartAppHostMenu, click: () => {
+          if (quitting) return
+          app.relaunch()
+          quitWithoutConfirmation()
+        } },
+      ] : [],
+      { type: 'separator' },
+      ...hideCommands,
+      { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
+        : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
+    ]
+  }
   const devToolsItems: MenuItemConstructorOptions[] = [
     { role: 'toggleDevTools', visible: false },
     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },

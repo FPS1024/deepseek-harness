@@ -264,6 +264,13 @@ export function createElectronBuilderConfig(
       packageName: 'deepseek-harness',
       maintainer: 'DeepSeek AI',
       packageCategory: 'devel',
+      // Repeats the builder's Electron defaults plus two libraries the binary links directly.
+      depends: [
+        'libgtk-3-0', 'libnotify4', 'libnss3', 'libxss1', 'libxtst6', 'xdg-utils',
+        'libatspi2.0-0', 'libuuid1', 'libsecret-1-0', 'libgbm1', 'libasound2 | libasound2t64',
+      ],
+      // Debian shows this as the one-line summary above the package description.
+      synopsis: 'Desktop application for the DeepSeek Harness agent',
       afterInstall: fileURLToPath(new URL('./linux-deb-post-install.sh', import.meta.url)),
       afterRemove: fileURLToPath(new URL('./linux-deb-post-remove.sh', import.meta.url)),
     },
