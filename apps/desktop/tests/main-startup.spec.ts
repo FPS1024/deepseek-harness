@@ -64,6 +64,7 @@ const harness = await vi.hoisted(async () => {
   const updateCheck = vi.fn(async (_manual?: boolean): Promise<DesktopUpdateState> => updateState)
   const updateDownload = vi.fn(async (_version: string): Promise<DesktopUpdateState> => updateState)
   const updateInstall = vi.fn(async (_version: string): Promise<DesktopUpdateState> => updateState)
+  const netFetch = vi.fn<typeof fetch>()
   const popup = vi.fn<(options: { window: FakeWindow; x?: number; y?: number; callback?: () => void }) => void>()
   const menuBuilder = vi.fn<(template: MenuItemConstructorOptions[]) => { popup: typeof popup }>(() => ({ popup }))
   const menu = Object.assign(menuBuilder, { buildFromTemplate: menuBuilder, setApplicationMenu: vi.fn() })
@@ -193,7 +194,7 @@ const harness = await vi.hoisted(async () => {
     failWindow(error: Error) { windowFailure = error },
     windows, hosts, handlers, app, FakeWindow, FakeHost, powerMonitor, nativeTheme, analytics,
     trays, FakeTray, backgroundNotice, shellDialog,
-    menu, popup, socketHeaders: vi.fn(), loginShell, readLoginShell, updateCheck, updateDownload, updateInstall,
+    menu, popup, socketHeaders: vi.fn(), loginShell, readLoginShell, updateCheck, updateDownload, updateInstall, netFetch,
     platformDispose,
     platformCloseAndWait,
 
@@ -280,7 +281,7 @@ vi.mock('electron', () => ({
   dialog: harness.dialog,
   shell: { openExternal: harness.openExternal },
   nativeTheme: harness.nativeTheme,
-  net: { fetch: vi.fn() },
+  net: { fetch: harness.netFetch },
   ipcMain: {
     on: harness.ipcOn,
     handle: (channel: string, handler: InvokeHandler) => {
@@ -614,6 +615,19 @@ describe('desktop main startup', () => {
     expect(testAuth.login).not.toHaveBeenCalled()
     expect(harness.dialog.showMessageBox.mock.calls.map(call => (call.at(-1) as { message: string }).message))
       .not.toContain(en.policyLoginRequired)
+  })
+
+  it('checks the published GitHub release from the Linux menu entry', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    harness.netFetch.mockResolvedValue(Response.json([]))
+    onTestFinished(() => { harness.netFetch.mockReset() })
+    await readyForUpdate()
+    const checkUpdates = applicationMenuItems().find(item => item.label === en.checkUpdatesMenu)!.click as () => void
+    checkUpdates()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.netFetch).toHaveBeenCalledWith(
+      'https://api.github.com/repos/FPS1024/deepseek-harness/releases?per_page=100',
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/vnd.github+json' }) }))
   })
 
   it.each([false, true])('retains anonymous production checks with popup permission %s', async (allow) => {
@@ -1011,7 +1025,7 @@ describe('desktop main startup', () => {
     const application = template[0]!.submenu as MenuItemConstructorOptions[]
     expect(application.filter(item => item.visible !== false).map(describeItem)).toEqual(platform === 'darwin'
       ? ['about', 'separator', en.checkUpdatesMenu, en.cliCommandMenu, 'separator', 'hide', 'hideOthers', 'unhide', 'separator', 'quit']
-      : ['about', 'separator', 'quit'])
+      : ['about', 'separator', en.checkUpdatesMenu, 'separator', 'quit'])
     expect(harness.menu.setApplicationMenu).toHaveBeenCalledOnce()
   })
 

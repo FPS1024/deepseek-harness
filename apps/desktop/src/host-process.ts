@@ -179,6 +179,9 @@ export class DesktopHostProcess {
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
   ) {}
 
+  /** Operating-system process identifier of the running Host; absent before spawn and after exit. */
+  get pid(): number | undefined { return this.child?.pid }
+
   /**
    * Start this child once and await its Web application URL.
    * @returns Ready facts supplied by the child after application startup.

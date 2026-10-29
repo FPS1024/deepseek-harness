@@ -60,6 +60,15 @@ import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
+import { LinuxTray, type LinuxTrayServiceState } from './tray-linux.ts'
+import { autostartEnabled, setAutostart } from './autostart.ts'
+import {
+  fetchLinuxReleases,
+  linuxInstallKind,
+  resolveReleaseRepository,
+  selectLatestRelease,
+  selectLinuxAsset,
+} from './linux-update.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 
 let focusPrimaryWindow = (): void => {}
@@ -71,6 +80,8 @@ let shuttingDown = false
  */
 let skipQuitConfirmation = false
 let windowsLanguage: string | undefined
+/** Login autostart starts the service in the tray without opening a window. */
+const startHidden = process.argv.includes('--hidden')
 /**
  * Whether the backend has reached ready: false until the first ready, back to
  * false when a restart returns it to starting, frozen during shutdown so a
@@ -358,7 +369,9 @@ async function main(): Promise<void> {
   let mandatoryPolicy: DesktopMandatoryUpdatePolicy | undefined
   let mandatoryUI: DesktopMandatoryUpdateWindow | undefined
   let policyAuth: DesktopPolicyTestAuth | undefined
-  let tray: DesktopTray | undefined
+  let tray: DesktopTray | LinuxTray | undefined
+  /** The user paused the service from the tray; the backend is stopped until Start service. */
+  let servicePaused = false
   /**
    * The operating system is ending the session: the quit skips its confirmation. Windows sets it
    * on the definitive session-end message. macOS sets it on the power-off notification, which
@@ -449,6 +462,7 @@ async function main(): Promise<void> {
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) })
     return {
+      get pid() { return host.pid },
       start: async () => {
         const ready = await host.start()
         hostCookie = await authenticateWebHost(ready.url)
@@ -513,6 +527,7 @@ async function main(): Promise<void> {
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
     else if (!shuttingDown) backendReady = state.phase === 'ready'
+    tray?.relabel()
   })
 
   const updateErrors = new WeakMap<DesktopUpdateState, Promise<void>>()
@@ -573,7 +588,7 @@ async function main(): Promise<void> {
       await backend.start(async () => {
         await Promise.all([manager.applyRelease(), prepareHostEnvironment()])
       })
-      if (backend.host !== undefined) await openInitialWindow()
+      if (backend.host !== undefined && !startHidden) await openInitialWindow()
       if (backend.host !== undefined) updateJournal?.action('workspace-ready')
       // The existing Web document resumes through the boot IPC response.
     })().catch((error: unknown) => {
@@ -794,6 +809,7 @@ async function main(): Promise<void> {
   })
   ipcMain.handle(DESKTOP_IPC.updatesOpen, async (event) => {
     assertProductSender(event)
+    if (process.platform === 'linux') { await openLinuxUpdatePrompt(); return }
     await openUpdatePrompt()
   })
 
@@ -867,6 +883,65 @@ async function main(): Promise<void> {
     return promptOperation
   }
 
+  let linuxUpdateOperation: Promise<void> | undefined
+  /**
+   * Check the published release and offer the installer download in the browser.
+   * Linux never installs in place: the .deb or AppImage is downloaded and installed by the user.
+   * @returns Completion of the check and its result dialog.
+   */
+  const openLinuxUpdatePrompt = (): Promise<void> => {
+    linuxUpdateOperation ??= (async () => {
+      const parent = currentDialogWindow()
+      if (parent === undefined) return
+      const controller = new AbortController()
+      ordinaryDialogs.add(controller)
+      const checking = updateDialog.show(parent, {
+        type: 'info', title: locale.messages.updateCheckTitle, message: locale.messages.updateChecking,
+        buttons: [locale.messages.updateLater], cancelId: 0, signal: controller.signal,
+      }).catch(() => undefined)
+      try {
+        const releases = await fetchLinuxReleases(resolveReleaseRepository(),
+          (input, init) => net.fetch(input instanceof URL ? input.href : input, init))
+        controller.abort()
+        await checking
+        if (quitting) return
+        const availability = selectLatestRelease(releases, app.getVersion())
+        if (availability === undefined) {
+          await ordinaryMessageBox({ type: 'error', title: locale.messages.updateCheckFailedTitle,
+            message: locale.messages.updateCheckFailed, buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
+          return
+        }
+        if (availability.relation !== 'newer') {
+          await ordinaryMessageBox({ type: 'info', title: locale.messages.updateCheckTitle,
+            message: availability.relation === 'same' ? locale.messages.updateCurrent : locale.messages.updateFutureVersion,
+            detail: formatDesktopMessage(locale.messages.updateCurrentDetail, { version: app.getVersion() }),
+            buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
+          return
+        }
+        const asset = selectLinuxAsset(availability.release, linuxInstallKind())
+        const result = await ordinaryMessageBox({ type: 'info', title: locale.messages.updateCheckTitle,
+          message: formatDesktopMessage(locale.messages.updateAvailable, { version: availability.release.version }),
+          detail: locale.messages.updateDownloadBrowser,
+          buttons: [locale.messages.updateDownload, locale.messages.updateLater], defaultId: 0, cancelId: 1 })
+        if (result.response !== 0) return
+        const url = asset?.url ?? availability.release.pageUrl
+        if (['http:', 'https:'].includes(new URL(url).protocol)) await shell.openExternal(url)
+      } catch (error: unknown) {
+        controller.abort()
+        await checking
+        console.error(error)
+        if (!quitting) {
+          await ordinaryMessageBox({ type: 'error', title: locale.messages.updateCheckFailedTitle,
+            message: locale.messages.updateCheckFailed, buttons: [locale.messages.updateAcknowledge], cancelId: 0 })
+        }
+      } finally {
+        ordinaryDialogs.delete(controller)
+        linuxUpdateOperation = undefined
+      }
+    })()
+    return linuxUpdateOperation
+  }
+
   let authenticationOperation: Promise<DesktopPolicyState | undefined> | undefined
   const authenticatePolicy = () => {
     if (authenticationOperation !== undefined) { policyAuth?.focus(); updateDialog.focus() }
@@ -920,7 +995,8 @@ async function main(): Promise<void> {
 
   const automaticCheck = (): void => {
     if (!quitting) void mandatoryPolicy?.check('foreground-or-resume').catch((error: unknown) => { console.error(error) })
-    if (!quitting) void updateSchedule.check().catch((error: unknown) => { console.error(error) })
+    // Linux packages carry no update feed; their Check for Updates reads GitHub releases on demand.
+    if (!quitting && process.platform !== 'linux') void updateSchedule.check().catch((error: unknown) => { console.error(error) })
   }
   powerMonitor.on('resume', automaticCheck)
   app.on('will-quit', () => {
@@ -952,13 +1028,15 @@ async function main(): Promise<void> {
       { role: 'unhide', label: currentDesktopLocale().messages.showAllApplications }, { type: 'separator' }]
     : []
   const applicationItems = (): MenuItemConstructorOptions[] => {
-    // Linux packages ship without an update feed, so the check entry would only report its absence.
-    const releaseActions: MenuItemConstructorOptions[] = process.platform === 'darwin' || process.platform === 'win32'
-      ? [
-        { label: currentDesktopLocale().messages.checkUpdatesMenu, click: () => { void openUpdatePrompt(true) } },
-        { label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } },
-      ]
-      : []
+    const releaseActions: MenuItemConstructorOptions[] = [
+      {
+        label: currentDesktopLocale().messages.checkUpdatesMenu,
+        click: () => { if (process.platform === 'linux') void openLinuxUpdatePrompt(); else void openUpdatePrompt(true) },
+      },
+      ...process.platform === 'darwin' || process.platform === 'win32'
+        ? [{ label: currentDesktopLocale().messages.cliCommandMenu, click: () => { void commandManager.show() } }]
+        : [],
+    ]
     return [
       // Windows has no system About panel; Electron's fallback is a plain
       // message box, so the shell shows its own dimmed dialog instead.
@@ -1000,6 +1078,70 @@ async function main(): Promise<void> {
     try {
       tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
         open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
+    } catch (error) { console.warn('desktop tray: unavailable', error) }
+  }
+  const autostartExecutable = (): string => process.env.APPIMAGE ?? app.getPath('exe')
+  const linuxServiceState = (): LinuxTrayServiceState => {
+    if (servicePaused) return { phase: 'paused' }
+    if (backend.state.phase === 'ready') return { phase: 'running', pid: backend.host?.pid }
+    if (backend.state.phase === 'starting') return { phase: 'starting' }
+    return { phase: 'stopped' }
+  }
+  const reloadVisibleWorkspace = async (): Promise<void> => {
+    const window = mainWindow
+    if (quitting || window === undefined || window.isDestroyed() || !window.isVisible()) return
+    navigation = undefined
+    if (enteredWorkspace) await navigateMain(applicationUrl)
+    else await openInitialWindow()
+  }
+  const startService = async (): Promise<void> => {
+    servicePaused = false
+    await backend.start(prepareHostEnvironment)
+    tray?.relabel()
+    await reloadVisibleWorkspace()
+  }
+  const pauseService = async (): Promise<void> => {
+    servicePaused = true
+    await backend.stop()
+    tray?.relabel()
+  }
+  const restartService = async (): Promise<void> => {
+    servicePaused = false
+    try { await backend.stop() } catch (error: unknown) { console.error(error) }
+    await backend.start(prepareHostEnvironment)
+    tray?.relabel()
+    await reloadVisibleWorkspace()
+  }
+  // A login start deliberately skips the initial window; opening from the tray presents it.
+  const openFromTray = (): void => {
+    if (startHidden && !enteredWorkspace && welcomeWindow === undefined
+      && mainWindow !== undefined && !mainWindow.isDestroyed()) {
+      void openInitialWindow().catch((error: unknown) => { reportFatal(error, 'main') })
+      return
+    }
+    focusPrimaryWindow()
+  }
+  if (process.platform === 'linux') {
+    const linuxTrayIconPath = development
+      ? join(app.getAppPath(), 'resources', 'tray-linux.png')
+      : join(process.resourcesPath, 'tray-linux.png')
+    try {
+      tray = new LinuxTray({
+        iconPath: linuxTrayIconPath,
+        locale: currentDesktopLocale,
+        service: linuxServiceState,
+        autostart: () => app.isPackaged && autostartEnabled(),
+        open: () => { openFromTray() },
+        startService: () => { void startService().catch((error: unknown) => { console.error(error); tray?.relabel() }) },
+        pauseService: () => { void pauseService().catch((error: unknown) => { console.error(error); tray?.relabel() }) },
+        restartService: () => { void restartService().catch((error: unknown) => { console.error(error); tray?.relabel() }) },
+        setAutostart: (enabled) => {
+          if (!app.isPackaged) { console.warn('desktop autostart: only packaged builds start at login'); tray?.relabel(); return }
+          void setAutostart(enabled, autostartExecutable()).then(() => { tray?.relabel() })
+            .catch((error: unknown) => { console.error(error); tray?.relabel() })
+        },
+        quit: () => { app.quit() },
+      })
     } catch (error) { console.warn('desktop tray: unavailable', error) }
   }
   const backgroundNotice = process.platform === 'win32'
