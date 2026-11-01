@@ -7,6 +7,8 @@ fi
 
 command=/usr/bin/deepseek-harness
 target=/opt/deepseek-harness/bin/deepseek-harness
+cli_command=/usr/bin/dsh
+cli_target=/opt/deepseek-harness/resources/runtime/cli/bin/dsh
 profile_target=/etc/apparmor.d/deepseek-harness
 
 # Unload before deleting so the policy does not stay enforced until the next reboot.
@@ -21,4 +23,7 @@ fi
 
 if [ -L "$command" ] && [ "$(readlink "$command")" = "$target" ]; then
   rm -f "$command"
+fi
+if [ -L "$cli_command" ] && [ "$(readlink "$cli_command")" = "$cli_target" ]; then
+  rm -f "$cli_command"
 fi

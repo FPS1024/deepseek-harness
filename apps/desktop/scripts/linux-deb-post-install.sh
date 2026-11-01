@@ -4,6 +4,8 @@ set -eu
 command=/usr/bin/deepseek-harness
 target=/opt/deepseek-harness/bin/deepseek-harness
 legacy_target=/opt/deepseek-harness/deepseek-harness
+cli_command=/usr/bin/dsh
+cli_target=/opt/deepseek-harness/resources/runtime/cli/bin/dsh
 sandbox=/opt/deepseek-harness/chrome-sandbox
 profile_source=/opt/deepseek-harness/resources/apparmor-profile
 profile_target=/etc/apparmor.d/deepseek-harness
@@ -32,6 +34,17 @@ if command -v update-mime-database >/dev/null 2>&1; then
 fi
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database /usr/share/applications || true
+fi
+
+# Expose the bundled CLI as dsh for terminal use. An existing command is never replaced.
+if [ -x "$cli_target" ]; then
+  if [ -L "$cli_command" ] && [ "$(readlink "$cli_command")" = "$cli_target" ]; then
+    :
+  elif [ -e "$cli_command" ] || [ -L "$cli_command" ]; then
+    printf '%s\n' "deepseek-harness: not replacing existing $cli_command" >&2
+  else
+    ln -s "$cli_target" "$cli_command"
+  fi
 fi
 
 if [ -L "$command" ] && [ "$(readlink "$command")" = "$target" ]; then
