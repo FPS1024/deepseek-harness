@@ -158,7 +158,9 @@ export function assertDualDshInstallLayout(packageLock: NpmPackageLock): DshInst
 
   for (const [path, manifest] of installed) {
     const name = packageNameAtPath(path, manifest)
-    if (name === 'react' || name === 'react-dom') {
+    // React is a real Node runtime for the terminal surface; react-dom remains
+    // browser-only and must not enter the DSH-only install.
+    if (name === 'react-dom') {
       errors.push(`${path}: ${name} is a browser build input, not a dependency of the synthetic DSH-only consumer`)
     }
     if (name === undefined || !isDshPackage(name)) continue
