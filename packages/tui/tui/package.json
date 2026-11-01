@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tui",
   "description": "The dsh terminal surface: a React + Ink frontend over the core Agent, Session, command, approval, and question services",
-  "version": "0.2.1-rc.5",
+  "version": "0.2.1-rc.6",
   "publishConfig": {
     "access": "public"
   },
