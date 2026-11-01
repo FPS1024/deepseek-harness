@@ -440,6 +440,9 @@ flowchart TD
     pkg_remote_mock["remote-mock"]
     pkg_session_snapshot["session-snapshot"]
   end
+  subgraph group_tui["packages/tui"]
+    pkg_tui["tui"]
+  end
   subgraph group_typert["packages/typert"]
     pkg_typert_generator["typert-generator"]
     pkg_typert_loader["typert-loader"]
@@ -1561,6 +1564,7 @@ flowchart TD
 | [`storage`](../packages/storage/storage) | `storage` | — |
 | [`win32-process`](../packages/subprocess/win32-process) | `subprocess` | — |
 | [`llm-mock-server`](../packages/test-support/llm-mock-server) | `test-support` | — |
+| [`tui`](../packages/tui/tui) | `tui` | — |
 | [`typert-generator`](../packages/typert/generator) | `typert` | — |
 | [`typert-protocol`](../packages/typert/protocol) | `typert` | — |
 | [`typert-registry`](../packages/typert/registry) | `typert` | — |

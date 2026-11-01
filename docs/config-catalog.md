@@ -4241,6 +4241,38 @@ export type ToolPresentationMode = 'native' | 'ptc'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tools -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tui -->
+<a id="deepseek-aidsh-tui"></a>
+
+## `@deepseek-ai/dsh-tui`
+
+- `inject`: `agents` · `sessions` · `agentDefaultModel` · `cmdlineArgs`
+- `source`: [`packages/tui/tui/src/index.ts:24`](../packages/tui/tui/src/index.ts)
+
+```ts config-catalog
+/** Validated terminal configuration; deployment-varying values live here. */
+export interface Config extends TuiConfig {}
+
+/** Validated deployment knobs read from the profile row. */
+export interface TuiConfig {
+  /** Maximum interval between streamed render updates; zero renders each chunk. */
+  readonly streamFrameMs: number
+  /** Result lines retained per tool card before truncation. */
+  readonly toolOutputLines: number
+  /** Context lines kept around each diff change. */
+  readonly diffContextLines: number
+  /** Per-side line ceiling before a diff degrades to one replacement hunk. */
+  readonly diffMaxLines: number
+  /** Oldest messages dropped once the in-memory transcript exceeds this size. */
+  readonly maxTranscriptMessages: number
+  /** Maximum composer history entries retained in durable storage; zero disables history. */
+  readonly historyLimit: number
+  /** Trailing characters of live tool output retained per call; zero hides live output. */
+  readonly toolOutputChars: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tui -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-typert-loader -->
 <a id="deepseek-aidsh-typert-loader"></a>
 

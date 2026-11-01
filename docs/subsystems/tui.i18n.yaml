@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for tui.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/tui.md
+/terminal-surface:
+  en: 1b7cd05cf961b0b2
+  zh: 5abf61f1167395fb
+/terminal-surface/launch-and-lifetime:
+  en: bf1371390e30a13d
+  zh: de3ec320a78f8c86
+/terminal-surface/snapshot:
+  en: 320e4895ed276551
+  zh: f55e96a073b24111
+/terminal-surface/event-sources:
+  en: 00e2f21b09a44826
+  zh: 1792c67410ca2a9c
+/terminal-surface/streaming:
+  en: 32a8b7a707e589c8
+  zh: c6340fc4df8e0928
+/terminal-surface/tools-and-diffs:
+  en: 8231d30304dfd391
+  zh: f0e401442ece2269
+/terminal-surface/approvals-and-questions:
+  en: 585c15b6855609e3
+  zh: f979053573afffb7
+/terminal-surface/commands-and-sessions:
+  en: 48b93fe0e8ac8950
+  zh: dd60ca3ec71b7e19
+/terminal-surface/layout:
+  en: 3d4ea7cb5f6c76fe
+  zh: a39e03ea6510e251
+/terminal-surface/failure-behavior:
+  en: e1e52851f269ae93
+  zh: 7c11beb45a760c24
+/terminal-surface/limits:
+  en: ad1be0d7d0347cf1
+  zh: a4512f90e68c1c36

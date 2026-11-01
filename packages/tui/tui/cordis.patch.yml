@@ -1,0 +1,22 @@
+# The dsh-tui bundle patch: the terminal surface over dsh-base.
+# It mounts no Host, HTTP server, or browser plugin. The tui plugin owns the
+# interactive frontend: it creates or resumes one Agent through the core
+# registry, renders the conversation with Ink, and dispatches slash commands,
+# approvals, and user questions through their shared services.
+
+- id: system-prompt
+  config:
+    personaPrefix: >-
+      You are a coding agent powered by the {{model}} model.
+
+- id: tools
+  config:
+    # Keep the same temporary process-wide PTC mode opt-in as other surfaces.
+    mode: !!js process.env.DSH_TOOLS_MODE
+
+- insert:
+    - id: tui
+      name: '@deepseek-ai/dsh-tui'
+
+- id: hmr
+  disabled: true

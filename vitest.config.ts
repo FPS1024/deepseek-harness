@@ -287,6 +287,15 @@ export default defineConfig({
         'packages/client/ui-chat/src/client/historical-images.ts',
         'packages/client/ui-primitives/src/DisclosureRow.tsx',
         'packages/client/ui-tool/src/*',
+        // The terminal host and its live runtime need a PTY-grade lane that
+        // unit-process V8 coverage cannot observe; the pure state folds,
+        // command grammar, Markdown, diff production, and tool summaries stay
+        // gated. TODO(tui): add a PTY lane and remove these entries.
+        'packages/tui/tui/src/components/**',
+        'packages/tui/tui/src/terminal.ts',
+        'packages/tui/tui/src/index.ts',
+        'packages/tui/tui/src/runtime.ts',
+        'packages/tui/tui/src/commands.ts',
         'packages/client/ui-slots/src/*',
         'packages/client/ui-layout/src/*',
         'packages/client/web/src/*',

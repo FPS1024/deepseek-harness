@@ -1,0 +1,58 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/tui/tui/README.md
+/:
+  en: 74b5cf1f74954580
+  zh: 50a5f5853d108ba4
+/deepseek-ai-dsh-tui:
+  en: 2212eca37e67f797
+  zh: 81d1b93f3b6ed088
+/deepseek-ai-dsh-tui/summary:
+  en: d688d3b1c211d16b
+  zh: abd48660e06f2e41
+/deepseek-ai-dsh-tui/table-of-contents:
+  en: c5735f7f47ccbd0d
+  zh: c791059f6bd78d2f
+/deepseek-ai-dsh-tui/use-this-package:
+  en: 96e2213d6661e7ff
+  zh: ad3f2b46ad324d48
+/deepseek-ai-dsh-tui/use-this-package/keys:
+  en: 6bd9b0f565bd61de
+  zh: 5f6e8d1741be19be
+/deepseek-ai-dsh-tui/use-this-package/commands:
+  en: 1a63233af2ac8c0d
+  zh: 10117ae4bf70d2ff
+/deepseek-ai-dsh-tui/configuration:
+  en: 84ab8f569b414df0
+  zh: d464e549a083c0b5
+/deepseek-ai-dsh-tui/concepts:
+  en: 5c69cdb857ba08e6
+  zh: cb567eea9763af14
+/deepseek-ai-dsh-tui/understand-the-implementation:
+  en: a32ab3d787cf7771
+  zh: cd562122ef463367
+/deepseek-ai-dsh-tui/further-exploration:
+  en: c571574be2dda263
+  zh: 0c8cc76be22dfc89
+/deepseek-ai-dsh-tui/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tui/model-experience/conversation-and-commands:
+  en: 533e0235664ddc2d
+  zh: 240767f009115cb9
+/deepseek-ai-dsh-tui/model-experience/conversation-and-commands/what-the-model-sees:
+  en: 941394e8e2971ed0
+  zh: 10be050d0f50a607
+/deepseek-ai-dsh-tui/model-experience/conversation-and-commands/token-effect:
+  en: 3455a02cdc317e15
+  zh: 215e1082c6527f75
+/deepseek-ai-dsh-tui/model-experience/conversation-and-commands/kv-cache-effect:
+  en: de2a7b8a6736e757
+  zh: a2d312ede1fb579b
+/deepseek-ai-dsh-tui/known-limitations-and-deferred-work:
+  en: adce5103fff61805
+  zh: 8e36dd7723d0f288
+/deepseek-ai-dsh-tui/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: b23ea3e6cbd56734
